@@ -1,350 +1,332 @@
-from typing import Counter
 import pygame
 import json
-from pygame import event
+import os
+import random
 from pygame.locals import *
 
+# Pygame Başlatma
 pygame.init()
-#Oyun Ekranı
+
+# Saat ve FPS Ayarı
+clock = pygame.time.Clock()
+FPS = 60
+
+# Oyun Ekranı Ayarları
 bottomPanel = 150
 screenWidth = 800
 screenHeight = 400 + bottomPanel
 
 screen = pygame.display.set_mode((screenWidth, screenHeight))
-font = pygame.font.SysFont('Minecraft', 30)
-pygame.display.set_caption('İlde Game')
-#Oluşturulan Renkler
+pygame.display.set_caption('İlde Stone Game')
 
+# Fontlar
+try:
+    font = pygame.font.SysFont('Minecraft', 30)
+except:
+    font = pygame.font.SysFont('Arial', 24)
+
+# Renkler
 goldColor = (255, 215, 0)
 black = (0, 0, 0)
 white = (255, 255, 255)
 red = (255, 0, 0)
 green = (0, 255, 0)
 
-C_Dictionary = json.load(open("character\player_data.txt"))
+# Veri Yükleme
+def load_data():
+    default_data = {"Gold": 50, "Food": 10}
+    path = os.path.join("character", "player_data.txt")
+    if not os.path.exists("character"):
+        os.makedirs("character")
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except:
+            return default_data
+    return default_data
+
+C_Dictionary = load_data()
 Gold = C_Dictionary["Gold"]
 Food = C_Dictionary["Food"]
 
-#Arka plan resimleri
-bgImage = pygame.image.load('img/Background/background.png').convert_alpha()
-startImage = pygame.image.load('img/Background/start.jpg').convert_alpha()
-panelImage = pygame.image.load('img/Icons/panel.png').convert_alpha()
-#KALP RESMİ
-hearth_img = pygame.image.load('img/Icons/hearth.png').convert_alpha()
-meatImage = pygame.image.load('img/Icons/Meat.png').convert_alpha()
-#Ses Efektlerinin tanımı
-PetEatSong = pygame.mixer.Sound('sound/petEat.mp3')
-PetLoveSong = pygame.mixer.Sound('sound/petLove.mp3')
-PetSleepSong =pygame.mixer.Sound('sound/petSleep.mp3')
-gameLoopSong = pygame.mixer.Sound('sound/gameLoop.mp3')
+# Görsel Yükleme
+def load_image(path, scale=None):
+    if not os.path.exists(path):
+        # Eğer dosya yoksa boş bir yüzey oluştur ki oyun çökmesin
+        surf = pygame.Surface((50, 50))
+        surf.fill((255, 0, 255))
+        return surf
+    img = pygame.image.load(path).convert_alpha()
+    if scale:
+        img = pygame.transform.scale(img, scale)
+    return img
 
+bgImage = load_image('img/Background/background.png')
+startImage = load_image('img/Background/start.jpg')
+panelImage = load_image('img/Icons/panel.png')
+hearth_img = load_image('img/Icons/hearth.png')
+meatImage = load_image('img/Icons/Meat.png', (40, 40))
+coinImage = load_image('img/Icons/coin.png', (40, 40))
 
-clicked = False
-#BUTTONLARIN OLUŞTURULMASI
-class button():
-	button_col = (183, 73, 73)
-	hover_col = (225, 30, 56)
-	click_col = (255, 0, 0)
-	text_col = black
-	width = 150
-	height = 70
-	def __init__(self, x, y, text):
-		self.x = x
-		self.y = y
-		self.text = text
-		
-	def draw_button(self):
-		global clicked
-		action = False
-		pos = pygame.mouse.get_pos()
-		button_rect = Rect(self.x, self.y, self.width, self.height)
+# Sesler ve Müzik
+pygame.mixer.init()
+try:
+    PetEatSong = pygame.mixer.Sound('sound/petEat.mp3')
+    PetLoveSong = pygame.mixer.Sound('sound/petLove.mp3')
+    PetSleepSong = pygame.mixer.Sound('sound/petSleep.mp3')
+    pygame.mixer.music.load('sound/gameLoop.mp3')
+    pygame.mixer.music.set_volume(0.5)
+    pygame.mixer.music.play(-1) # Döngü şeklinde çal
+except Exception as e:
+    print(f"Ses yükleme hatası: {e}")
+    PetEatSong = PetLoveSong = PetSleepSong = None
 
-		if button_rect.collidepoint(pos):
-			if pygame.mouse.get_pressed()[0] == 1:
-				clicked = True
-				pygame.draw.rect(screen, self.click_col, button_rect)
-			elif pygame.mouse.get_pressed()[0] == 0 and clicked == True:
-				clicked = False
-				action = True
-			else:
-				pygame.draw.rect(screen, self.hover_col, button_rect)
-		else:
-			pygame.draw.rect(screen, self.button_col, button_rect)
-		
-		pygame.draw.line(screen, white, (self.x, self.y), (self.x + self.width, self.y), 2)
-		pygame.draw.line(screen, white, (self.x, self.y), (self.x, self.y + self.height), 2)
-		pygame.draw.line(screen, black, (self.x, self.y + self.height), (self.x + self.width, self.y + self.height), 2)
-		pygame.draw.line(screen, black, (self.x + self.width, self.y), (self.x + self.width, self.y + self.height), 2)
+# --- SINIFLAR ---
 
-		text_img = font.render(self.text, True, self.text_col)
-		text_len = text_img.get_width()
-		screen.blit(text_img, (self.x + int(self.width / 2) - int(text_len / 2), self.y + 25))
-		return action
-#PETİN CLASSI
-class gamePet:
-	def __init__(self,x,y,name,max_hp,max_love,max_hungry,max_sleep):
-		self.name = name
-		self.max_hp = max_hp
-		self.hp = max_hp
-		self.max_love = max_love
-		self.love = max_love
-		self.max_hungry = max_hungry
-		self.hungry = max_hungry
-		self.max_sleep = max_sleep
-		self.sleep = max_sleep
-		self.alive = True
-		self.animation_list = []
-		self.frame_index = 0
-		self.action = 0 #0:idle, 1:love, 2:eat, 3:sleep
-		self.update_time = pygame.time.get_ticks()
-		temp_list = []
-		for i in range(8):
-			img = pygame.image.load(f'img/{self.name}/Idle/{i}.png')
-			img = pygame.transform.scale(img, (img.get_width() * 3, img.get_height() * 3))
-			temp_list.append(img)
-		self.animation_list.append(temp_list)
-		temp_list = []
-		for i in range(8):
-			img = pygame.image.load(f'img/{self.name}/Love/{i}.png')
-			img = pygame.transform.scale(img, (img.get_width() * 3, img.get_height() * 3))
-			temp_list.append(img)
-		self.animation_list.append(temp_list)
-		temp_list = []
-		for i in range(8):
-			img = pygame.image.load(f'img/{self.name}/Eat/{i}.png')
-			img = pygame.transform.scale(img, (img.get_width() * 3, img.get_height() * 3))
-			temp_list.append(img)
-		self.animation_list.append(temp_list)
-		temp_list = []
-		for i in range(8):
-			img = pygame.image.load(f'img/{self.name}/Sleep/{i}.png')
-			img = pygame.transform.scale(img, (img.get_width() * 3, img.get_height() * 3))
-			temp_list.append(img)
-		self.animation_list.append(temp_list)
-		self.image = self.animation_list[self.action][self.frame_index]
-		self.rect = self.image.get_rect()
-		self.rect.center = (x,y)	
-	def update(self):
+class Particle:
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.size = random.randint(4, 8)
+        self.vel_x = random.uniform(-3, 3)
+        self.vel_y = random.uniform(-6, -2)
+        self.lifetime = 255
 
-		animation_cooldown = 300
-		self.image = self.animation_list[self.action][self.frame_index]
-		if pygame.time.get_ticks() - self.update_time > animation_cooldown:
-			self.update_time = pygame.time.get_ticks()
-			self.frame_index += 1
-		if self.frame_index >= len(self.animation_list[self.action]):
-			self.idle()
-	
-	def idle(self):
-		self.action = 0
-		self.frame_index = 0
-		self.update_time = pygame.time.get_ticks()
+    def update(self):
+        self.x += self.vel_x
+        self.y += self.vel_y
+        self.lifetime -= 8
+        if self.size > 0.2: self.size -= 0.1
 
+    def draw(self, screen):
+        if self.lifetime > 0:
+            surf = pygame.Surface((int(self.size*2), int(self.size*2)), pygame.SRCALPHA)
+            pygame.draw.circle(surf, (*self.color, self.lifetime), (int(self.size), int(self.size)), int(self.size))
+            screen.blit(surf, (int(self.x), int(self.y)))
 
-	def love(self, target):
-		self.action = 1
-		self.frame_index = 0
-		self.update_time = pygame.time.get_ticks()	
-		
-	def draw(self):
-		coinImage = pygame.image.load('img/Icons/coin.png').convert_alpha()
-		meatImage = pygame.image.load('img/Icons/Meat.png').convert_alpha()
-		meatImage = pygame.transform.scale(meatImage,(40,40))
-		coinImage = pygame.transform.scale(coinImage,(40,40))
-		coin = font.render(str(Gold), True, goldColor)
-		food = font.render(str(Food), True, goldColor)
-		screen.blit(coin,(750,75))
-		screen.blit(food,(750,125))
-		screen.blit(coinImage, (700, 65))
-		screen.blit(meatImage, (700, 115))
-		screen.blit(self.image, self.rect)	
-#CAN BARI
-class HealthBar():
-	def __init__(self, x, y, hp, max_hp):
-		self.x = x 
-		self.y = y 
-		self.hp = hp
-		self.max_hp = max_hp
-		
-	def draw (self,hp):
-		self.hp = hp 
-		ratio = self.hp / self.max_hp
-		pygame.draw.rect(screen, red, (self.x, self.y, 150, 20))
-		pygame.draw.rect(screen, green, (self.x, self.y, 150 * ratio, 20))
-		Health = font.render(str("Can"), True, white)
-		screen.blit(Health,(self.x,self.y))
-#SEVGİ BARI
-class LoveBar():
-	def __init__(self, x, y, love, max_love):
-		self.x = x 
-		self.y = y 
-		self.love = love
-		self.max_love = max_love
-		
-	def draw (self,love):
-		self.love = love 
-		ratio = self.love / self.max_love	
-		pygame.draw.rect(screen, red, (self.x, self.y, 150, 20))
-		pygame.draw.rect(screen, green, (self.x, self.y, 150 * ratio, 20 ))
-		Love = font.render(str("Sevgi"), True, white)
-		screen.blit(Love,(self.x,self.y))
-#AÇLIK BARI
-class HungryBar():
-	def __init__(self, x, y, hungry, max_hungry):
-		self.x = x 
-		self.y = y 
-		self.hungry = hungry
-		self.max_hungry = max_hungry
-		
-	def draw (self,hungry):
-		self.hungry = hungry 
-		ratio = self.hungry / self.max_hungry	
-		pygame.draw.rect(screen, red, (self.x, self.y, 150, 20))
-		pygame.draw.rect(screen, green, (self.x, self.y, 150 * ratio, 20 ))
-		hungry = font.render(str("Açlık"), True, white)
-		screen.blit(hungry,(self.x,self.y))
-#UYKU BARI
-class SleepBar():
-	def __init__(self, x, y, sleep, max_sleep):
-		self.x = x 
-		self.y = y 
-		self.sleep = sleep
-		self.max_sleep = max_sleep
-		
-	def draw (self,sleep):
-		self.sleep = sleep 
-		ratio = self.sleep / self.max_sleep	
-		pygame.draw.rect(screen, red, (self.x, self.y, 150, 20))
-		pygame.draw.rect(screen, green, (self.x, self.y, 150 * ratio, 20 ))
-		sleep = font.render(str("Uyku"), True, white)
-		screen.blit(sleep,(self.x,self.y))
-#CAN SEVGİ AÇLIK VE UYKU BARLARI 
-def UIBars():
+class Button():
+    def __init__(self, x, y, text, width=150, height=60):
+        self.rect = Rect(x, y, width, height)
+        self.text = text
+        self.color = (183, 73, 73)
 
-	petHealt = HealthBar(10, 60, pet.hp, pet.max_hp)
-	petLove = LoveBar(10, 100, pet.love, pet.max_love)
-	petHungry = HungryBar(10, 140, pet.hungry, pet.max_hungry)
-	petSleep = SleepBar(10, 180, pet.sleep, pet.max_sleep)
-	petHealt.draw(pet.hp)
-	petLove.draw(pet.love)
-	petHungry.draw(pet.hungry)
-	petSleep.draw(pet.sleep)
-#OYUN CAN VE UYKUNUN ZAMANLA AZALMA KISIMLARI
-def gameSystem():
-	pet.love -= 0.0001
-	pet.hungry -= 0.0003
-	pet.sleep -= 0.0002
-	if(pet.hungry < 5 or pet.sleep < 5 ):
-		pet.hp -= 0.001
-		pet.love -= 0.001
-	else:
-		pass
-	if pet.love and pet.hungry and pet.sleep < 0:
-		pet.love = 0
-		pet.hungry = 0
-		pet.sleep = 0
-#OYUNDAKİ BUTONLAR VE İŞLEVLERİ
-def gameAllBUTTONS():
-	petSleep = button(20, 450, 'Uyku')
-	petEat = button(200, 450, 'Besle')
-	petMarket = button(450, 450, 'Market')
-	gold = button(630, 450, 'Para Ver')
+    def draw(self, screen, mouse_pos, is_clicked):
+        action = False
+        draw_color = self.color
+        
+        if self.rect.collidepoint(mouse_pos):
+            draw_color = (225, 30, 56)
+            if is_clicked:
+                action = True
+                draw_color = (255, 0, 0)
 
-	if petSleep.draw_button():
+        pygame.draw.rect(screen, draw_color, self.rect, border_radius=10)
+        pygame.draw.rect(screen, white, self.rect, 2, border_radius=10)
+        
+        text_img = font.render(self.text, True, white)
+        text_rect = text_img.get_rect(center=self.rect.center)
+        screen.blit(text_img, text_rect)
+        return action
 
-		pet.sleep = pet.max_sleep
-		pet.frame_index = 0
-		pet.action = 3
-		#PetSleepSong.play()
+class GamePet():
+    def __init__(self, x, y, name, stats):
+        self.name = name
+        self.hp = self.max_hp = stats[0]
+        self.love = self.max_love = stats[1]
+        self.hungry = self.max_hungry = stats[2]
+        self.sleep = self.max_sleep = stats[3]
+        
+        self.animation_list = []
+        self.frame_index = 0
+        self.action = 0 # 0:idle, 1:love, 2:eat, 3:sleep
+        self.update_time = pygame.time.get_ticks()
+        self.is_alive = True
+        
+        actions = ['Idle', 'Love', 'Eat', 'Sleep']
+        for act in actions:
+            temp_list = []
+            for i in range(8):
+                path = f'img/{self.name}/{act}/{i}.png'
+                img = load_image(path)
+                img = pygame.transform.scale(img, (img.get_width() * 4, img.get_height() * 4))
+                temp_list.append(img)
+            self.animation_list.append(temp_list)
 
-	if petEat.draw_button():
-		pet.frame_index = 0
-		pet.action = 2
-		pet.hungry += 0.5	
-		pet.hp += 0.5	
-		PetEatSong.play()
-		if pet.hungry > pet.max_hungry:
-				pet.hungry = pet.max_hungry	
-		if pet.hp > pet.max_hp:
-				pet.hp = pet.max_hp	
+        self.image = self.animation_list[self.action][self.frame_index]
+        self.rect = self.image.get_rect(center=(x, y))
 
-	if petMarket.draw_button():
-		Chracter_Save_Files()
-	if gold.draw_button():
-		pass
-#ARKA PLANI ÇİZME
-def drawBg():
-	screen.blit(bgImage, (0, 0))
-def drawStart():
-	screen.blit(startImage, (0, 0))
-#ALT PANELİ ÇİZME
-def drawPanel():
-	screen.blit(panelImage, (0, screenHeight - bottomPanel))
-#PETİN ÜSTÜNE BASIP SEVME SİSTEMİ
-def petLoveSystem():
-	global c_clicked
-	global Gold
-	for event in pygame.event.get():
-		if event.type == pygame.MOUSEBUTTONDOWN:
-			c_clicked = True
-		else:
-			c_clicked = False
-	pygame.mouse.set_visible(True)
-	pos = pygame.mouse.get_pos()
-	if pet.rect.collidepoint(pos):
-		pygame.mouse.set_visible(False)
-		screen.blit(hearth_img, pos)
-		if c_clicked == True:
-			#PetLoveSong.play()	
-			Gold +=1
-			Chracter_Save_Files()
-			pet.love +=1
-			pet.action = 1
-			c_clicked = False
-			if pet.love > pet.max_love:
-				pet.love = pet.max_love		
-#OYUNUN ÇALIŞMASI VE KAPATILMASI
-def gameStart():
-	global c_clicked
-	global run
-	for event in pygame.event.get():
-		if event.type == pygame.QUIT:
-			run = False
-		if event.type == pygame.MOUSEBUTTONDOWN:
-			c_clicked = True
-		else:
-			c_clicked = False
-	pygame.display.update()
-def gameLoop():
-		drawBg()
-		drawPanel()
-		UIBars()
-		gameSystem()
-		gameAllBUTTONS()
-		petLoveSystem()
-		pet.update()
-		pet.draw()
-		#gameLoopSong.play()
+    def update(self):
+        if self.hp <= 0:
+            self.is_alive = False
+            return
 
-def Chracter_Save_Files():
-    C_Dictionary ={
-        "Gold" : Gold,
-		"Food" :Food
-    }
-    json.dump(C_Dictionary, open("character\player_data.txt", "w"))
+        cooldown = 150
+        if pygame.time.get_ticks() - self.update_time > cooldown:
+            self.update_time = pygame.time.get_ticks()
+            self.frame_index = (self.frame_index + 1) % len(self.animation_list[self.action])
+            if self.frame_index == 0 and self.action != 0:
+                self.action = 0 # Idle'a dön
+        
+        self.image = self.animation_list[self.action][self.frame_index]
 
-#OLUŞTURULAN PET KONUMU MAX CANI UYKUSU SEVGİSİ
-pet = gamePet(375, 312, "Kaya", 10, 10, 10 ,10)
-gameStartKey = 0
+    def draw(self, screen):
+        if self.is_alive:
+            screen.blit(self.image, self.rect)
+        else:
+            txt = font.render(f"{self.name} Melek Oldu...", True, red)
+            screen.blit(txt, (screenWidth//2 - 120, screenHeight//2 - 20))
+
+class Bar():
+    def __init__(self, x, y, title, color):
+        self.x, self.y, self.title, self.color = x, y, title, color
+
+    def draw(self, screen, value, max_value):
+        ratio = max(0, min(value / max_value, 1))
+        pygame.draw.rect(screen, (40, 40, 40), (self.x-2, self.y-2, 154, 24), border_radius=6)
+        pygame.draw.rect(screen, (80, 0, 0), (self.x, self.y, 150, 20), border_radius=5)
+        if ratio > 0:
+            pygame.draw.rect(screen, self.color, (self.x, self.y, 150 * ratio, 20), border_radius=5)
+        txt = font.render(self.title, True, white)
+        screen.blit(txt, (self.x, self.y - 25))
+
+# --- OYUN DÖNGÜSÜ ---
+
+def save_game():
+    with open(os.path.join("character", "player_data.txt"), "w") as f:
+        json.dump({"Gold": Gold, "Food": Food}, f)
+
+# --- OYUN BAŞLATMA ---
+pet = GamePet(400, 320, "Kaya", [15, 10, 10, 10])
+# Barların yerleşimi (Biraz daha aşağı ve sola hizalı)
+hp_bar = Bar(25, 120, "Can", red)
+love_bar = Bar(25, 170, "Sevgi", (255, 105, 180))
+hungry_bar = Bar(25, 220, "Açlık", (255, 165, 0))
+sleep_bar = Bar(25, 270, "Uyku", (100, 149, 237))
+
+# Butonların dikey hizalamasını düzelttik
+btn_y = 445
+buttons = [
+    Button(35, btn_y, 'Uyku'),
+    Button(195, btn_y, 'Besle'),
+    Button(355, btn_y, 'Market'),
+    Button(580, btn_y + 5, 'Kaydet', width=110, height=50) # +5 ile dikey ortalandı
+]
+buttons[3].color = (60, 63, 65) # Daha şık bir koyu gri
+
+particles = []
+game_state = "START"
 run = True
 
 while run:
-	gameStart()	
-	drawStart()
-	pressed = pygame.key.get_pressed()
-	if pressed[pygame.K_r]:
-		gameStartKey = 1
-	if gameStartKey > 0:
-		gameLoop()
+    clock.tick(FPS)
+    mouse_pos = pygame.mouse.get_pos()
+    is_clicked = False
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            run = False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            is_clicked = True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+            if game_state == "START" or not pet.is_alive:
+                pet = GamePet(400, 320, "Kaya", [15, 10, 10, 10])
+                game_state = "PLAY"
+
+    if game_state == "START":
+        screen.blit(startImage, (0, 0))
+        overlay = pygame.Surface((screenWidth, screenHeight), pygame.SRCALPHA)
+        overlay.fill((0,0,0,160))
+        screen.blit(overlay, (0,0))
+        txt = font.render("Baslatmak icin 'R' tusuna basin", True, white)
+        screen.blit(txt, (screenWidth//2 - 180, screenHeight//2))
+    
+    elif game_state == "PLAY":
+        screen.blit(bgImage, (0, 0))
+        screen.blit(panelImage, (0, screenHeight - bottomPanel))
+
+        if pet.is_alive:
+            # Mantık
+            pet.love -= 0.002
+            pet.hungry -= 0.004
+            pet.sleep -= 0.003
+            if pet.hungry < 2 or pet.sleep < 2: pet.hp -= 0.01
+            
+            pet.love = max(0, min(pet.love, pet.max_love))
+            pet.hungry = max(0, min(pet.hungry, pet.max_hungry))
+            pet.sleep = max(0, min(pet.sleep, pet.max_sleep))
+            pet.hp = max(0, min(pet.hp, pet.max_hp))
+
+            # Barlar
+            hp_bar.draw(screen, pet.hp, pet.max_hp)
+            love_bar.draw(screen, pet.love, pet.max_love)
+            hungry_bar.draw(screen, pet.hungry, pet.max_hungry)
+            sleep_bar.draw(screen, pet.sleep, pet.max_sleep)
+
+            # Buton İşlemleri
+            if buttons[0].draw(screen, mouse_pos, is_clicked): # Uyku
+                pet.sleep = pet.max_sleep
+                pet.action = 3
+                if PetSleepSong: PetSleepSong.play()
+                for _ in range(10): particles.append(Particle(400, 320, (100, 149, 237)))
+
+            if buttons[1].draw(screen, mouse_pos, is_clicked): # Besle
+                if Food > 0:
+                    Food -= 1
+                    pet.hungry = min(pet.hungry + 3, pet.max_hungry)
+                    pet.hp = min(pet.hp + 2, pet.max_hp)
+                    pet.action = 2
+                    if PetEatSong: PetEatSong.play()
+                    for _ in range(15): particles.append(Particle(400, 320, (255, 165, 0)))
+                    save_game()
+
+            if buttons[2].draw(screen, mouse_pos, is_clicked): # Market
+                if Gold >= 10:
+                    Gold -= 10
+                    Food += 5
+                    save_game()
+                    for _ in range(20): particles.append(Particle(mouse_pos[0], mouse_pos[1], goldColor))
+
+            if buttons[3].draw(screen, mouse_pos, is_clicked): # Kaydet
+                save_game()
+
+            # Sevgi Sistemi
+            if pet.rect.collidepoint(mouse_pos):
+                pygame.mouse.set_visible(False)
+                screen.blit(hearth_img, (mouse_pos[0]-15, mouse_pos[1]-15))
+                if is_clicked:
+                    Gold += 1
+                    pet.love = min(pet.love + 1, pet.max_love)
+                    pet.action = 1
+                    if PetLoveSong: PetLoveSong.play()
+                    particles.append(Particle(mouse_pos[0], mouse_pos[1], (255, 105, 180)))
+                    save_game()
+            else:
+                pygame.mouse.set_visible(True)
+        else:
+            overlay = pygame.Surface((screenWidth, screenHeight), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 200))
+            screen.blit(overlay, (0, 0))
+            over_txt = font.render("OYUN BITTI! Yeniden baslatmak icin 'R' basin", True, white)
+            screen.blit(over_txt, (screenWidth//2 - 250, screenHeight//2))
+
+        # Partiküller
+        for p in particles[:]:
+            p.update()
+            p.draw(screen)
+            if p.lifetime <= 0: particles.remove(p)
+
+        pet.update()
+        pet.draw(screen)
+        
+        # Üst Bilgi (İkonları barlarla aynı hizaya (Y: 120 ve 170) taşıdık)
+        info_x = screenWidth - 110
+        screen.blit(coinImage, (info_x, 115)) # Can barı hizası (120 - biraz ofset)
+        screen.blit(font.render(str(Gold), True, goldColor), (info_x + 50, 120))
+        screen.blit(meatImage, (info_x, 165)) # Sevgi barı hizası (170 - biraz ofset)
+        screen.blit(font.render(str(Food), True, white), (info_x + 50, 170))
+
+    pygame.display.flip()
+
 pygame.quit()
-
-
